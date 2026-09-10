@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Laporan — FireSentry Karhutla</title>
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-mount"></div>
+
+  <main class="main">
+    <div id="topbar-mount"></div>
+
+    <div class="card" style="margin-bottom:18px;background:linear-gradient(90deg,#fff7ed,#fffaf3);border:1px solid #fed7aa;">
+      <div class="card-head">
+        <div class="card-head-left">
+          <h3>⬇️ Unduh Data Laporan Cepat</h3>
+          <span class="tag">CSV — Monitoring, Cuaca, Hotspot &amp; Kejadian</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
+        <button type="button" class="btn btn-outline btn-sm" id="btn-unduh-harian">⬇ Unduh Harian (Hari Ini)</button>
+        <button type="button" class="btn btn-outline btn-sm" id="btn-unduh-mingguan">⬇ Unduh Mingguan (7 Hari Terakhir)</button>
+        <button type="button" class="btn btn-outline btn-sm" id="btn-unduh-bulanan">⬇ Unduh Bulanan (Bulan Ini)</button>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <div class="card-head">
+          <div class="card-head-left">
+            <h3>📄 Daftar Laporan</h3>
+            <span class="tag" id="jumlah-laporan"></span>
+          </div>
+          <select class="select-chip" id="filter-jenis">
+            <option value="">Semua Jenis</option>
+            <option value="Harian">Harian</option>
+            <option value="Mingguan">Mingguan</option>
+            <option value="Bulanan">Bulanan</option>
+            <option value="Kejadian">Kejadian</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>ID</th><th>Judul Laporan</th><th>Periode</th><th>Jenis</th><th>Data Disertakan</th><th>Dibuat</th><th>Aksi</th></tr></thead>
+            <tbody id="laporan-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>➕ Buat Laporan Baru</h3></div>
+        <form id="form-laporan">
+          <div class="field">
+            <label>Judul Laporan</label>
+            <input type="text" id="input-judul" placeholder="Contoh: Laporan Mingguan Monitoring Karhutla" required>
+          </div>
+          <div class="field">
+            <label>Jenis Laporan</label>
+            <select id="input-jenis">
+              <option value="Harian">Harian</option>
+              <option value="Mingguan">Mingguan</option>
+              <option value="Bulanan">Bulanan</option>
+              <option value="Kejadian">Kejadian</option>
+            </select>
+          </div>
+          <div class="grid grid-2" style="grid-template-columns:1fr 1fr;">
+            <div class="field">
+              <label>Tanggal Mulai</label>
+              <input type="date" id="input-tanggal-mulai" required>
+            </div>
+            <div class="field">
+              <label>Tanggal Selesai</label>
+              <input type="date" id="input-tanggal-selesai" required>
+            </div>
+          </div>
+          <div class="field">
+            <label>Data yang Disertakan</label>
+            <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text-900);">
+              <label style="display:flex;align-items:center;gap:8px;font-weight:500;"><input type="checkbox" id="chk-monitoring" checked style="width:auto;"> Data Monitoring Karhutla</label>
+              <label style="display:flex;align-items:center;gap:8px;font-weight:500;"><input type="checkbox" id="chk-cuaca" checked style="width:auto;"> Data Cuaca (BMKG)</label>
+              <label style="display:flex;align-items:center;gap:8px;font-weight:500;"><input type="checkbox" id="chk-hotspot" checked style="width:auto;"> Data Hotspot</label>
+              <label style="display:flex;align-items:center;gap:8px;font-weight:500;"><input type="checkbox" id="chk-kejadian" checked style="width:auto;"> Riwayat Kejadian</label>
+            </div>
+          </div>
+          <div class="field">
+            <label>Catatan / Ringkasan</label>
+            <textarea id="input-catatan" rows="3" placeholder="Ringkasan kondisi, tindakan, dan rekomendasi..."></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">Simpan Laporan</button>
+        </form>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/components.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<script>
+  ewsInitPage("laporan", { title:"Laporan", subtitle:"Kelola laporan gabungan monitoring, cuaca, hotspot, dan kejadian karhutla" });
+
+  // Laporan disimpan permanen di localStorage (lihat ewsSemuaLaporan() di data.js)
+  // supaya laporan yang baru dibuat tidak hilang saat pindah menu/halaman.
+  let laporanState = ewsSemuaLaporan();
+
+  function formatTgl(iso){
+    if(!iso) return "-";
+    return new Date(iso).toLocaleDateString("id-ID", { day:"2-digit", month:"short", year:"numeric" });
+  }
+
+  function renderLaporan(){
+    const filter = document.getElementById("filter-jenis").value;
+    const rows = laporanState.filter(l => !filter || l.jenis === filter);
+    document.getElementById("jumlah-laporan").textContent = rows.length + " laporan";
+
+    document.getElementById("laporan-body").innerHTML = rows.map(l => `
+      <tr>
+        <td><strong>${l.id}</strong></td>
+        <td>${l.judul}</td>
+        <td>${l.periode}</td>
+        <td><span class="badge badge-neutral">${l.jenis}</span></td>
+        <td style="white-space:normal;font-size:12px;color:var(--text-600);">${l.dataDisertakan.join(", ")}</td>
+        <td>${l.dibuat}</td>
+        <td style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn btn-outline btn-sm" onclick="cetakLaporan('${l.id}')">🖨️ Cetak</button>
+          <button class="btn btn-outline btn-sm" onclick="unduhLaporanPDF('${l.id}')">⬇ Unduh</button>
+          <button class="btn btn-outline btn-sm" style="color:var(--red-600);border-color:#fecaca;" onclick="hapusLaporan('${l.id}')">🗑️ Hapus</button>
+        </td>
+      </tr>`).join("") || `<tr><td colspan="7" style="text-align:center;color:var(--text-400);">Belum ada laporan.</td></tr>`;
+  }
+
+  function hapusLaporan(id){
+    const l = laporanState.find(x => x.id === id);
+    if(!l) return;
+    const yakin = confirm(`Hapus laporan "${l.judul}" (${l.id})?\nTindakan ini tidak dapat dibatalkan.`);
+    if(!yakin) return;
+    ewsHapusLaporan(id);
+    laporanState = ewsSemuaLaporan();
+    renderLaporan();
+  }
+
+  function dalamRentang(tglISO, mulai, selesai){
+    if(!tglISO) return true;
+    if(!mulai || !selesai) return true;
+    return tglISO >= mulai && tglISO <= selesai;
+  }
+
+  function buatBagianMonitoring(){
+    const rows = WILAYAH_RISIKO.slice().sort((a,b)=>b.hotspot-a.hotspot);
+    return `
+      <h3>1. Data Monitoring Karhutla per Kecamatan</h3>
+      <table border="1" cellpadding="6" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:12.5px;">
+        <thead><tr><th>Kecamatan</th><th>Suhu (°C)</th><th>Kelembapan (%)</th><th>Titik Panas</th><th>Tingkat Risiko</th></tr></thead>
+        <tbody>${rows.map(w=>`<tr><td>${w.kecamatan}</td><td>${w.suhu}</td><td>${w.kelembapan}</td><td>${w.hotspot}</td><td>${w.risiko}</td></tr>`).join("")}</tbody>
+      </table>`;
+  }
+
+  function buatBagianCuaca(){
+    return `
+      <h3>2. Data Cuaca (BMKG)</h3>
+      <table border="1" cellpadding="6" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:12.5px;">
+        <thead><tr><th>Hari</th><th>Tanggal</th><th>Suhu (°C)</th><th>Kelembapan (%)</th><th>Angin</th><th>Cuaca Siang</th></tr></thead>
+        <tbody>${CUACA_3HARI_FALLBACK.map(c=>`<tr><td>${c.hari}</td><td>${c.tanggal}</td><td>${c.suhuMin}–${c.suhuMax}</td><td>${c.kelembapanMin}–${c.kelembapanMax}</td><td>${c.angin}</td><td>${c.siang}</td></tr>`).join("")}</tbody>
+      </table>
+      <p style="font-size:11px;color:#666;">Sumber: BMKG — Data Prakiraan Cuaca Terbuka.</p>`;
+  }
+
+  function buatBagianHotspot(mulai, selesai){
+    const rows = DATA_HOTSPOT.filter(h => dalamRentang(h.tanggal, mulai, selesai));
+    return `
+      <h3>3. Data Hotspot</h3>
+      <table border="1" cellpadding="6" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:12.5px;">
+        <thead><tr><th>ID</th><th>Tanggal</th><th>Jam</th><th>Kecamatan</th><th>Satelit</th><th>Confidence</th></tr></thead>
+        <tbody>${rows.map(h=>`<tr><td>${h.id}</td><td>${h.tanggal}</td><td>${h.jam}</td><td>${h.kecamatan}</td><td>${h.satelit}</td><td>${h.confidence}</td></tr>`).join("") || '<tr><td colspan="6">Tidak ada data pada rentang tanggal ini.</td></tr>'}</tbody>
+      </table>
+      <p style="font-size:11px;color:#666;">Sumber: Pantau Titik Panas (Hotspot) Mandiri — BMKG Stamet Riau.</p>`;
+  }
+
+  function buatBagianKejadian(mulai, selesai){
+    const rows = ewsSemuaRiwayat().filter(r => dalamRentang(r.tanggalISO, mulai, selesai));
+    return `
+      <h3>4. Riwayat Kejadian Karhutla</h3>
+      <table border="1" cellpadding="6" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:12.5px;">
+        <thead><tr><th>ID</th><th>Tanggal</th><th>Lokasi</th><th>Luas</th><th>Penyebab</th><th>Petugas</th><th>Status</th></tr></thead>
+        <tbody>${rows.map(r=>`<tr><td>${r.id}</td><td>${r.tanggal}</td><td>${r.lokasi}</td><td>${r.luas}</td><td>${r.penyebab}</td><td>${r.petugas}</td><td>${r.status}</td></tr>`).join("") || '<tr><td colspan="7">Tidak ada kejadian pada rentang tanggal ini.</td></tr>'}</tbody>
+      </table>`;
+  }
+
+  // ---------- Unduh data laporan sebagai CSV (harian / mingguan / bulanan / rentang laporan) ----------
+  function csvAman(val){
+    const s = String(val ?? "").replace(/"/g, '""');
+    return /[,"\n]/.test(s) ? `"${s}"` : s;
+  }
+
+  function barisKeCSV(arr){ return arr.map(csvAman).join(","); }
+
+  function isoLokal(d){
+    const tz = d.getTimezoneOffset() * 60000;
+    return new Date(d - tz).toISOString().slice(0, 10);
+  }
+
+  function csvBagianMonitoring(){
+    const rows = WILAYAH_RISIKO.slice().sort((a, b) => b.hotspot - a.hotspot);
+    const out = ["## DATA MONITORING KARHUTLA PER KECAMATAN"];
+    out.push(barisKeCSV(["Kecamatan", "Suhu (C)", "Kelembapan (%)", "Titik Panas", "Tingkat Risiko"]));
+    rows.forEach(w => out.push(barisKeCSV([w.kecamatan, w.suhu, w.kelembapan, w.hotspot, w.risiko])));
+    return out.join("\n");
+  }
+
+  function csvBagianCuaca(){
+    const out = ["## DATA CUACA (BMKG)"];
+    out.push(barisKeCSV(["Hari", "Tanggal", "Suhu Min (C)", "Suhu Max (C)", "Kelembapan Min (%)", "Kelembapan Max (%)", "Angin", "Cuaca Siang"]));
+    CUACA_3HARI_FALLBACK.forEach(c => out.push(barisKeCSV([c.hari, c.tanggal, c.suhuMin, c.suhuMax, c.kelembapanMin, c.kelembapanMax, c.angin, c.siang])));
+    return out.join("\n");
+  }
+
+  function csvBagianHotspot(mulai, selesai){
+    const rows = DATA_HOTSPOT.filter(h => dalamRentang(h.tanggal, mulai, selesai));
+    const out = ["## DATA HOTSPOT"];
+    out.push(barisKeCSV(["ID", "Tanggal", "Jam", "Kecamatan", "Satelit", "Confidence"]));
+    rows.forEach(h => out.push(barisKeCSV([h.id, h.tanggal, h.jam, h.kecamatan, h.satelit, h.confidence])));
+    if(!rows.length) out.push("Tidak ada data pada rentang tanggal ini.");
+    return out.join("\n");
+  }
+
+  function csvBagianKejadian(mulai, selesai){
+    const rows = ewsSemuaRiwayat().filter(r => dalamRentang(r.tanggalISO, mulai, selesai));
+    const out = ["## RIWAYAT KEJADIAN KARHUTLA"];
+    out.push(barisKeCSV(["ID", "Tanggal", "Lokasi", "Luas", "Penyebab", "Petugas", "Status"]));
+    rows.forEach(r => out.push(barisKeCSV([r.id, r.tanggal, r.lokasi, r.luas, r.penyebab, r.petugas, r.status])));
+    if(!rows.length) out.push("Tidak ada kejadian pada rentang tanggal ini.");
+    return out.join("\n");
+  }
+
+  function generateCSVLaporan(dataDisertakan, mulai, selesai, judul, periode){
+    const bagian = [];
+    bagian.push(barisKeCSV(["FIRESENTRY KARHUTLA — BPBD Kota Pekanbaru"]));
+    bagian.push(barisKeCSV([judul || "Laporan"]));
+    bagian.push(barisKeCSV(["Periode", periode || "-"]));
+    bagian.push(barisKeCSV(["Diunduh pada", new Date().toLocaleString("id-ID", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" }) + " WIB"]));
+    bagian.push("");
+    if(dataDisertakan.includes("Monitoring")) bagian.push(csvBagianMonitoring(), "");
+    if(dataDisertakan.includes("Cuaca")) bagian.push(csvBagianCuaca(), "");
+    if(dataDisertakan.includes("Hotspot")) bagian.push(csvBagianHotspot(mulai, selesai), "");
+    if(dataDisertakan.includes("Kejadian")) bagian.push(csvBagianKejadian(mulai, selesai), "");
+    return bagian.join("\n");
+  }
+
+  function unduhTeksCSV(isiCSV, namaFile){
+    const blob = new Blob(["\uFEFF" + isiCSV], { type: "text/csv;charset=utf-8;" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = namaFile;
+    a.click();
+  }
+
+  // Unduh CSV untuk satu laporan yang sudah tersimpan di daftar
+  function unduhLaporanCSV(id){
+    const l = laporanState.find(x => x.id === id);
+    if(!l) return;
+    const csv = generateCSVLaporan(l.dataDisertakan, l.tglMulai, l.tglSelesai, l.judul, l.periode);
+    unduhTeksCSV(csv, `laporan-${l.id}-${isoLokal(new Date())}.csv`);
+  }
+
+  // Unduh cepat per periode (Harian / Mingguan / Bulanan) tanpa perlu membuat entri laporan dulu
+  function unduhPeriode(jenisPeriode){
+    const hariIni = new Date();
+    let mulai, selesai, periodeLabel, judul;
+
+    if(jenisPeriode === "Harian"){
+      mulai = selesai = isoLokal(hariIni);
+      periodeLabel = formatTgl(mulai);
+      judul = "Laporan Harian Karhutla";
+    }else if(jenisPeriode === "Mingguan"){
+      const awalMinggu = new Date(hariIni);
+      awalMinggu.setDate(awalMinggu.getDate() - 6);
+      mulai = isoLokal(awalMinggu);
+      selesai = isoLokal(hariIni);
+      periodeLabel = formatTgl(mulai) + " – " + formatTgl(selesai);
+      judul = "Laporan Mingguan Karhutla";
+    }else{
+      const awalBulan = new Date(hariIni.getFullYear(), hariIni.getMonth(), 1);
+      mulai = isoLokal(awalBulan);
+      selesai = isoLokal(hariIni);
+      periodeLabel = formatTgl(mulai) + " – " + formatTgl(selesai);
+      judul = "Laporan Bulanan Karhutla";
+    }
+
+    const csv = generateCSVLaporan(["Monitoring", "Cuaca", "Hotspot", "Kejadian"], mulai, selesai, judul, periodeLabel);
+    unduhTeksCSV(csv, `laporan-${jenisPeriode.toLowerCase()}-${isoLokal(hariIni)}.csv`);
+  }
+
+  document.getElementById("btn-unduh-harian").addEventListener("click", () => unduhPeriode("Harian"));
+  document.getElementById("btn-unduh-mingguan").addEventListener("click", () => unduhPeriode("Mingguan"));
+  document.getElementById("btn-unduh-bulanan").addEventListener("click", () => unduhPeriode("Bulanan"));
+
+  // ---------- Unduh langsung sebagai file PDF (tanpa jendela cetak) ----------
+  function unduhLaporanPDF(id){
+    const l = laporanState.find(x => x.id === id);
+    if(!l) return;
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit:"pt", format:"a4" });
+    const marginX = 40;
+    const pageBottom = 800;
+    let y = 50;
+
+    function cekHalamanBaru(tinggiDibutuhkan){
+      if(y + tinggiDibutuhkan > pageBottom){ doc.addPage(); y = 50; }
+    }
+
+    doc.setFont("helvetica","bold");
+    doc.setFontSize(14);
+    doc.text("FIRESENTRY KARHUTLA — BPBD Kota Pekanbaru", marginX, y);
+    y += 22;
+
+    doc.setFontSize(12);
+    doc.text(l.judul, marginX, y);
+    y += 18;
+
+    doc.setFont("helvetica","normal");
+    doc.setFontSize(10);
+    const info = [
+      `ID: ${l.id}`,
+      `Periode: ${l.periode}`,
+      `Jenis: ${l.jenis}`,
+      `Dibuat: ${l.dibuat}`,
+      `Petugas: ${l.petugas}`,
+    ];
+    if(l.catatan) info.push(`Catatan: ${l.catatan}`);
+    info.forEach(line => { doc.text(line, marginX, y); y += 14; });
+    y += 10;
+
+    function judulBagian(teks){
+      cekHalamanBaru(30);
+      doc.setFont("helvetica","bold");
+      doc.setFontSize(11);
+      doc.text(teks, marginX, y);
+      y += 8;
+    }
+
+    function tabelBagian(head, body){
+      doc.autoTable({
+        startY: y + 6,
+        head: [head],
+        body: body.length ? body : [head.map(()=>"-")],
+        margin:{ left:marginX, right:marginX },
+        styles:{ fontSize:8.5, cellPadding:4 },
+        headStyles:{ fillColor:[234,88,12], textColor:255 },
+        theme:"grid",
+      });
+      y = doc.lastAutoTable.finalY + 20;
+    }
+
+    if(l.dataDisertakan.includes("Monitoring")){
+      judulBagian("1. Data Monitoring Karhutla per Kecamatan");
+      const rows = WILAYAH_RISIKO.slice().sort((a,b)=>b.hotspot-a.hotspot)
+        .map(w => [w.kecamatan, w.suhu, w.kelembapan, w.hotspot, w.risiko]);
+      tabelBagian(["Kecamatan","Suhu (°C)","Kelembapan (%)","Titik Panas","Tingkat Risiko"], rows);
+    }
+    if(l.dataDisertakan.includes("Cuaca")){
+      judulBagian("2. Data Cuaca (BMKG)");
+      const rows = CUACA_3HARI_FALLBACK.map(c => [c.hari, c.tanggal, `${c.suhuMin}–${c.suhuMax}`, `${c.kelembapanMin}–${c.kelembapanMax}`, c.angin, c.siang]);
+      tabelBagian(["Hari","Tanggal","Suhu (°C)","Kelembapan (%)","Angin","Cuaca Siang"], rows);
+    }
+    if(l.dataDisertakan.includes("Hotspot")){
+      judulBagian("3. Data Hotspot");
+      const rows = DATA_HOTSPOT.filter(h => dalamRentang(h.tanggal, l.tglMulai, l.tglSelesai))
+        .map(h => [h.id, h.tanggal, h.jam, h.kecamatan, h.satelit, h.confidence]);
+      tabelBagian(["ID","Tanggal","Jam","Kecamatan","Satelit","Confidence"], rows);
+    }
+    if(l.dataDisertakan.includes("Kejadian")){
+      judulBagian("4. Riwayat Kejadian Karhutla");
+      const rows = ewsSemuaRiwayat().filter(r => dalamRentang(r.tanggalISO, l.tglMulai, l.tglSelesai))
+        .map(r => [r.id, r.tanggal, r.lokasi, r.luas, r.penyebab, r.petugas, r.status]);
+      tabelBagian(["ID","Tanggal","Lokasi","Luas","Penyebab","Petugas","Status"], rows);
+    }
+
+    cekHalamanBaru(30);
+    doc.setFont("helvetica","normal");
+    doc.setFontSize(8);
+    doc.setTextColor(120);
+    doc.text(
+      "Dokumen ini dibuat secara otomatis oleh sistem FireSentry Karhutla untuk keperluan monitoring dan pelaporan internal BPBD Kota Pekanbaru.",
+      marginX, y + 10, { maxWidth: 515 }
+    );
+
+    const namaFile = `${l.id}-${l.judul.replace(/\s+/g,"-").toLowerCase()}.pdf`;
+    doc.save(namaFile);
+  }
+
+  function cetakLaporan(id){
+    const l = laporanState.find(x => x.id === id);
+    if(!l) return;
+    let isi = "";
+    if(l.dataDisertakan.includes("Monitoring")) isi += buatBagianMonitoring();
+    if(l.dataDisertakan.includes("Cuaca")) isi += buatBagianCuaca();
+    if(l.dataDisertakan.includes("Hotspot")) isi += buatBagianHotspot(l.tglMulai, l.tglSelesai);
+    if(l.dataDisertakan.includes("Kejadian")) isi += buatBagianKejadian(l.tglMulai, l.tglSelesai);
+
+    const w = window.open("", "_blank");
+    w.document.write(`
+      <html><head><title>${l.judul}</title></head>
+      <body style="font-family:sans-serif;padding:40px;color:#0f172a;">
+        <h2>FIRESENTRY KARHUTLA — BPBD Kota Pekanbaru</h2>
+        <h3 style="margin-bottom:2px;">${l.judul}</h3>
+        <p style="margin-top:0;">
+          <strong>ID:</strong> ${l.id}<br>
+          <strong>Periode:</strong> ${l.periode}<br>
+          <strong>Jenis:</strong> ${l.jenis}<br>
+          <strong>Dibuat:</strong> ${l.dibuat}<br>
+          <strong>Petugas:</strong> ${l.petugas}
+          ${l.catatan ? `<br><strong>Catatan:</strong> ${l.catatan}` : ""}
+        </p>
+        <hr>
+        ${isi}
+        <hr>
+        <p style="font-size:11px;color:#666;">Dokumen ini dibuat secara otomatis oleh sistem FireSentry Karhutla untuk keperluan monitoring dan pelaporan internal BPBD Kota Pekanbaru.</p>
+      </body></html>`);
+    w.document.close();
+    w.print();
+  }
+
+  document.getElementById("filter-jenis").addEventListener("change", renderLaporan);
+
+  document.getElementById("form-laporan").addEventListener("submit", function(e){
+    e.preventDefault();
+    const mulai = document.getElementById("input-tanggal-mulai").value;
+    const selesai = document.getElementById("input-tanggal-selesai").value;
+
+    const dataDisertakan = [];
+    if(document.getElementById("chk-monitoring").checked) dataDisertakan.push("Monitoring");
+    if(document.getElementById("chk-cuaca").checked) dataDisertakan.push("Cuaca");
+    if(document.getElementById("chk-hotspot").checked) dataDisertakan.push("Hotspot");
+    if(document.getElementById("chk-kejadian").checked) dataDisertakan.push("Kejadian");
+
+    const laporanBaru = {
+      id: "LAP-" + String(100 + laporanState.length),
+      judul: document.getElementById("input-judul").value,
+      periode: formatTgl(mulai) + " – " + formatTgl(selesai),
+      jenis: document.getElementById("input-jenis").value,
+      dibuat: new Date().toLocaleDateString("id-ID", { day:"2-digit", month:"short", year:"numeric" }),
+      petugas: (ewsCurrentUser() && ewsCurrentUser().nama) || "Petugas BPBD",
+      dataDisertakan, tglMulai: mulai, tglSelesai: selesai,
+      catatan: document.getElementById("input-catatan").value
+    };
+
+    ewsTambahLaporan(laporanBaru); // simpan ke localStorage agar tidak hilang
+    laporanState = ewsSemuaLaporan(); // ambil ulang daftar terbaru dari localStorage
+
+    this.reset();
+    document.getElementById("chk-monitoring").checked = true;
+    document.getElementById("chk-cuaca").checked = true;
+    document.getElementById("chk-hotspot").checked = true;
+    document.getElementById("chk-kejadian").checked = true;
+    renderLaporan();
+  });
+
+  renderLaporan();
+</script>
+</body>
+</html>

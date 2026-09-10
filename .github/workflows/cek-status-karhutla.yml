@@ -1,0 +1,42 @@
+name: Cek Status Karhutla & Kirim Notifikasi
+
+# Jalan otomatis TANPA perlu ada yang membuka browser — inilah yang
+# membuat sistem ini benar-benar "Peringatan Dini", bukan sekadar
+# dashboard pasif. Jadwal ditulis dalam UTC (GitHub Actions selalu
+# pakai UTC); WIB = UTC+7.
+on:
+  schedule:
+    # Jam 00:00, 03:00, 06:00, ..., 21:00 UTC -> jam 07:00, 10:00, 13:00,
+    # ..., 04:00 WIB. Ubah angka */3 ini kalau mau lebih/kurang sering.
+    - cron: "0 */3 * * *"
+  workflow_dispatch: {} # supaya bisa juga dites manual lewat tab Actions di GitHub
+
+permissions:
+  contents: write # perlu izin ini supaya bisa commit balik file status
+
+jobs:
+  cek-status:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Jalankan pengecekan status & kirim notifikasi
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          FIRMS_MAP_KEY: ${{ secrets.FIRMS_MAP_KEY }}
+        run: node scripts/cek-status-karhutla.mjs
+
+      - name: Simpan status terbaru ke repo (kalau berubah)
+        run: |
+          git config user.name "firesentry-bot"
+          git config user.email "actions@github.com"
+          git add data/status-notifikasi-terakhir.json
+          git diff --quiet --cached || git commit -m "chore: perbarui status notifikasi karhutla [otomatis]"
+          git push

@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monitoring Karhutla — Cuaca &amp; Hotspot — FireSentry Karhutla</title>
+<link rel="stylesheet" href="assets/css/style.css">
+<style>
+  /* Tabel Monitoring lebar (20 kolom) — discroll di DALAM kartunya sendiri
+     (scrollbar internal di bawah tabel) supaya bagian atas halaman (topbar,
+     kartu statistik, dsb) tetap diam & sejajar, tidak ikut bergeser. */
+  #tabel-monitoring-wrap{
+    overflow-x:auto;
+  }
+  /* Latar tabel dibuat solid (bukan transparan) supaya kolom-kolom tabel
+     tidak "tembus" memperlihatkan background halaman (foto/gradasi) di
+     belakangnya saat digeser. */
+  #tabel-monitoring-wrap table.data-table{ background:#ffffff; }
+  #tabel-monitoring-wrap table.data-table thead th{ background:#ffffff; }
+  #tabel-monitoring-wrap table.data-table tbody tr{ background:#ffffff; }
+  #tabel-monitoring-wrap table.data-table tbody tr:hover{ background:#fafbfe; }
+  table.data-table{ min-width:2380px; }
+  #tabel-monitoring-wrap .cell-catatan{ max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:12.5px; color:var(--text-700, #334155); cursor:help; }
+  #tabel-monitoring-wrap .cell-catatan-kosong{ color:var(--text-300, #cbd5e1); text-align:center; }
+
+  /* ---------- Modal detail & form catatan lapangan ---------- */
+  .modal-box-lg{ width:100%; max-width:760px; max-height:90vh; overflow-y:auto; }
+  .aksi-cell{ display:flex; gap:12px; align-items:center; white-space:nowrap; }
+  .btn-text-detail{
+    background:none; border:none; color:var(--text-600); font-size:12.5px; font-weight:700;
+    cursor:pointer; padding:0; text-decoration:underline;
+  }
+  .btn-text-detail:hover{ color:var(--text-900); }
+  .form-section-title{
+    font-size:12.5px; font-weight:800; letter-spacing:.3px; text-transform:uppercase;
+    color:var(--text-600); margin:18px 0 10px;
+  }
+  .form-section-title:first-of-type{ margin-top:0; }
+  .grid-form-2{ display:grid; grid-template-columns:1fr 1fr; gap:0 20px; }
+  .detail-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px 24px; margin-bottom:4px; }
+  .detail-item label{ display:block; font-size:11.5px; font-weight:700; color:var(--text-400); text-transform:uppercase; letter-spacing:.3px; margin-bottom:3px; }
+  .detail-item p{ margin:0; font-size:13.5px; color:var(--text-900); line-height:1.5; }
+  .detail-full{ grid-column:1 / -1; }
+  @media (max-width:640px){ .grid-form-2{ grid-template-columns:1fr; } .detail-grid{ grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-mount"></div>
+
+  <main class="main">
+    <div id="topbar-mount"></div>
+
+    <div class="card" style="margin-bottom:18px;background:linear-gradient(90deg,#fff7ed,#fffaf3);border:1px solid #fed7aa;">
+      <div class="card-head">
+        <div class="card-head-left">
+          <h3>🌐 Sinkronisasi Data Real-time — BMKG &amp; NASA FIRMS</h3>
+          <span class="tag" id="sync-status">Belum pernah disinkronkan</span>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <select class="select-chip" id="pilih-rentang-hari" title="Rentang hari pencarian titik panas (NASA FIRMS)">
+            <option value="1">Titik panas: hari ini</option>
+            <option value="3">Titik panas: 3 hari terakhir</option>
+            <option value="7">Titik panas: 7 hari terakhir</option>
+            <option value="30">Titik panas: sebulan terakhir</option>
+          </select>
+          <button class="btn btn-primary btn-sm" id="btn-sinkron">🔄 Sinkronkan Sekarang</button>
+        </div>
+      </div>
+      <p style="font-size:12.5px;color:var(--text-600);margin:0;">
+        Satu kali sinkronisasi ini otomatis memperbarui <strong>ketiga</strong> tab di bawah — suhu &amp; kelembapan
+        per kecamatan (BMKG), prakiraan cuaca 3 hari (BMKG), dan arsip titik panas (NASA FIRMS) — sehingga data
+        Monitoring, Data Cuaca, dan Data Hotspot selalu konsisten satu sama lain.
+      </p>
+      <div id="sync-progress" style="display:none;margin-top:10px;font-size:12px;color:var(--orange-600);font-weight:600;"></div>
+    </div>
+
+    <div class="grid grid-3" style="margin-bottom:18px;">
+      <div class="card stat-card">
+        <div class="stat-top"><span class="stat-label">Wilayah Risiko Tinggi</span><span class="stat-icon" style="background:#fee2e2;">🔴</span></div>
+        <div class="stat-value" id="m-tinggi">—</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-top"><span class="stat-label">Wilayah Risiko Sedang</span><span class="stat-icon" style="background:#ffedd5;">🟠</span></div>
+        <div class="stat-value" id="m-sedang">—</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-top"><span class="stat-label">Wilayah Risiko Rendah</span><span class="stat-icon" style="background:#dcfce7;">🟢</span></div>
+        <div class="stat-value" id="m-rendah">—</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <nav class="ews-tabbar" id="ews-tabbar" role="tablist" aria-label="Bagian Monitoring Karhutla">
+        <button class="ews-tab active" data-tab="wilayah" role="tab" aria-selected="true">
+          🔥 Monitoring per Kecamatan <span class="ews-tab-count" id="tab-count-wilayah">18</span>
+        </button>
+        <button class="ews-tab" data-tab="cuaca" role="tab" aria-selected="false">
+          🌦️ Data Cuaca (BMKG)
+        </button>
+        <button class="ews-tab" data-tab="hotspot" role="tab" aria-selected="false">
+          📈 Data Hotspot (FIRMS) <span class="ews-tab-count" id="tab-count-hotspot">—</span>
+        </button>
+      </nav>
+
+      <!-- ===================== TAB 1: MONITORING PER KECAMATAN ===================== -->
+      <section class="ews-tab-panel active" id="panel-wilayah">
+        <div class="card-head">
+          <div class="card-head-left">
+            <h3>🔥 Monitoring Karhutla per Kecamatan</h3>
+            <span class="tag">20 wilayah dipantau</span>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <select class="select-chip" id="filter-risiko">
+              <option value="">Semua Tingkat Risiko</option>
+              <option value="Tinggi">Tinggi</option>
+              <option value="Sedang">Sedang</option>
+              <option value="Rendah">Rendah</option>
+            </select>
+            <input class="select-chip" id="filter-cari" placeholder="🔎 Cari kecamatan..." style="min-width:200px;">
+            <button class="btn btn-outline btn-sm" id="btn-export-monitoring">⬇ Download Data (CSV)</button>
+          </div>
+        </div>
+
+        <div class="table-wrap" id="tabel-monitoring-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>No.</th>
+                <th>Tanggal</th>
+                <th>Waktu</th>
+                <th>Kecamatan</th>
+                <th>Kelurahan</th>
+                <th>Latitude</th>
+                <th>Longitude</th>
+                <th>Suhu (°C)</th>
+                <th>Kelembapan (%)</th>
+                <th>Titik Panas</th>
+                <th>Tingkat Risiko</th>
+                <th>Jenis Lahan</th>
+                <th>Tujuan Monitoring</th>
+                <th>Catatan Lokasi</th>
+                <th>Ancaman &amp; Dampak</th>
+                <th>Terdampak (KK)</th>
+                <th>Tindakan Pencegahan</th>
+                <th>Tindakan Penanganan</th>
+                <th>Hasil Peninjauan</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="monitoring-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ===================== TAB 2: DATA CUACA (BMKG) ===================== -->
+      <section class="ews-tab-panel" id="panel-cuaca">
+        <div class="card-head">
+          <div class="card-head-left">
+            <h3 id="cuaca-heading">🌦️ Prakiraan Cuaca 3 Hari</h3>
+            <span class="tag" id="status-sumber-cuaca">Memuat data dari BMKG…</span>
+          </div>
+          <button class="btn btn-outline btn-sm" id="btn-refresh-cuaca">↻ Muat Ulang Prakiraan</button>
+        </div>
+        <div class="grid grid-3" id="cuaca-cards" style="margin-bottom:18px;"></div>
+
+        <div class="card-head"><h3 style="font-size:14px;">📋 Detail Parameter Cuaca</h3></div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Hari</th><th>Tanggal</th><th>Pagi</th><th>Siang</th><th>Malam</th><th>Suhu (°C)</th><th>Kelembapan (%)</th><th>Angin</th></tr></thead>
+            <tbody id="cuaca-body"></tbody>
+          </table>
+        </div>
+        <p class="source-note">Sumber resmi: BMKG — Data Prakiraan Cuaca Terbuka (data.bmkg.go.id/prakiraan-cuaca), wilayah <span id="cuaca-wilayah-note"></span>.</p>
+      </section>
+
+      <!-- ===================== TAB 3: DATA HOTSPOT (NASA FIRMS + BMKG) ===================== -->
+      <section class="ews-tab-panel" id="panel-hotspot">
+        <div class="card" style="margin-bottom:16px;background:linear-gradient(90deg,#fff7ed,#fffaf3);border:1px solid #fed7aa;box-shadow:none;">
+          <div class="card-head">
+            <div class="card-head-left">
+              <h3 style="font-size:14px;">🌐 Pantau Titik Panas (Hotspot) Mandiri — BMKG</h3>
+              <span class="tag">Sumber resmi &amp; real-time</span>
+            </div>
+          </div>
+          <p style="font-size:13px;color:var(--text-600);margin:0 0 14px;">
+            Untuk verifikasi silang, ikuti juga perkembangan sebaran titik panas Provinsi Riau secara
+            <strong>real-time</strong> langsung dari situs resmi Stasiun Meteorologi SSK II Pekanbaru (BMKG),
+            lengkap dengan filter periode tanggal dan grafik sebaran per kabupaten/kota.
+          </p>
+          <a class="btn btn-primary btn-sm" id="link-hotspot-bmkg" href="#" target="_blank" rel="noopener">🌐 Buka Pantau Hotspot Mandiri BMKG</a>
+        </div>
+
+        <div class="card-head">
+          <div class="card-head-left">
+            <h3 style="font-size:14px;">📈 Arsip Data Titik Panas (Hotspot) — BPBD</h3>
+            <span class="tag" id="jumlah-hotspot"></span>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <select class="select-chip" id="filter-confidence">
+              <option value="">Semua Confidence</option>
+              <option value="Tinggi">Tinggi</option>
+              <option value="Sedang">Sedang</option>
+              <option value="Rendah">Rendah</option>
+            </select>
+            <button class="btn btn-outline btn-sm" id="btn-export-hotspot">⬇ Export CSV</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th><th>Tanggal</th><th>Jam</th><th>Kecamatan</th>
+                <th>Koordinat</th><th>Satelit</th><th>Confidence</th><th>Tingkat Keyakinan</th>
+              </tr>
+            </thead>
+            <tbody id="hotspot-body"></tbody>
+          </table>
+        </div>
+        <p class="source-note">Sumber resmi: NASA FIRMS (VIIRS/MODIS, satelit yang sama dipakai SIPONGI+) &amp; Pantau Hotspot Mandiri BMKG Stamet Riau.</p>
+      </section>
+    </div>
+  </main>
+</div>
+
+<!-- Modal Update Data Kecamatan -->
+<div id="modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100;align-items:center;justify-content:center;padding:20px;">
+  <div class="card modal-box-lg" style="margin:16px;">
+    <div class="card-head"><h3>✏️ Update Data — <span id="modal-kecamatan"></span></h3></div>
+    <form id="form-update">
+      <p class="form-section-title">Indikator Cuaca &amp; Titik Panas</p>
+      <div class="grid-form-2">
+        <div class="field">
+          <label>Suhu Udara (°C)</label>
+          <input type="number" step="0.1" id="modal-suhu" required>
+        </div>
+        <div class="field">
+          <label>Kelembapan (%)</label>
+          <input type="number" step="1" id="modal-kelembapan" required>
+        </div>
+        <div class="field">
+          <label>Jumlah Titik Panas</label>
+          <input type="number" step="1" min="0" id="modal-hotspot" required>
+        </div>
+        <div class="field">
+          <label>Jenis Lahan</label>
+          <input type="text" id="modal-jenis-lahan" placeholder="mis. Lahan Gambut, Perkebunan Sawit">
+        </div>
+      </div>
+
+      <p class="form-section-title">Tujuan &amp; Dampak Monitoring</p>
+      <div class="field">
+        <label>Tujuan Monitoring</label>
+        <textarea id="modal-tujuan" rows="2"></textarea>
+      </div>
+      <div class="grid-form-2">
+        <div class="field">
+          <label>Catatan Lokasi</label>
+          <textarea id="modal-catatan" rows="3"></textarea>
+        </div>
+        <div class="field">
+          <label>Ancaman dan Dampak</label>
+          <textarea id="modal-ancaman" rows="3"></textarea>
+        </div>
+      </div>
+      <div class="field">
+        <label>Jumlah Terdampak (KK)</label>
+        <input type="number" step="1" min="0" id="modal-terdampak-kk" placeholder="0">
+      </div>
+
+      <p class="form-section-title">Tindakan &amp; Hasil Peninjauan</p>
+      <div class="grid-form-2">
+        <div class="field">
+          <label>Tindakan Pencegahan</label>
+          <textarea id="modal-pencegahan" rows="3"></textarea>
+        </div>
+        <div class="field">
+          <label>Tindakan Penanganan</label>
+          <textarea id="modal-penanganan" rows="3"></textarea>
+        </div>
+      </div>
+      <div class="field">
+        <label>Hasil Peninjauan</label>
+        <textarea id="modal-hasil" rows="3"></textarea>
+      </div>
+
+      <div style="display:flex;gap:10px;">
+        <button type="button" class="btn btn-outline btn-block" id="btn-batal-modal">Batal</button>
+        <button type="submit" class="btn btn-primary btn-block">💾 Simpan &amp; Hitung Ulang</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Detail Monitoring (hanya lihat) -->
+<div id="modal-detail-overlay" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100;align-items:center;justify-content:center;padding:20px;">
+  <div class="card modal-box-lg" style="margin:16px;">
+    <div class="card-head">
+      <h3>📋 Detail Monitoring — <span id="detail-kecamatan"></span></h3>
+      <button type="button" class="modal-close" id="btn-tutup-detail" aria-label="Tutup" style="background:none;border:none;font-size:22px;line-height:1;color:var(--text-400);cursor:pointer;">&times;</button>
+    </div>
+    <div id="detail-body"></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:14px;">
+      <button type="button" class="btn btn-outline" id="btn-tutup-detail-2">Tutup</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/components.js"></script>
+<script src="assets/js/api.js"></script>
+<script src="assets/js/notifikasi.js"></script>
+<script>
+  ewsInitPage("monitoring", { title:"Monitoring Karhutla", subtitle:"Pemantauan risiko karhutla per kecamatan, terintegrasi dengan Data Cuaca (BMKG) & Data Hotspot (NASA FIRMS)" });
+
+  /* ==========================================================
+     Tab switching — menggabungkan Monitoring Wilayah, Data Cuaca,
+     dan Data Hotspot dalam satu halaman. Tab aktif disimpan di URL
+     (?tab=...) supaya bisa ditautkan langsung (mis. dari Peringatan
+     atau Laporan) dan tetap tersimpan kalau halaman dimuat ulang.
+     ========================================================== */
+  const EWS_TAB_VALID = ["wilayah", "cuaca", "hotspot"];
+  function ewsTabAktifDariUrl(){
+    const t = new URLSearchParams(location.search).get("tab");
+    return EWS_TAB_VALID.includes(t) ? t : "wilayah";
+  }
+  function ewsPindahTab(tab, { updateUrl = true } = {}){
+    if(!EWS_TAB_VALID.includes(tab)) tab = "wilayah";
+    document.querySelectorAll(".ews-tab").forEach(btn => {
+      const aktif = btn.dataset.tab === tab;
+      btn.classList.toggle("active", aktif);
+      btn.setAttribute("aria-selected", aktif ? "true" : "false");
+    });
+    document.querySelectorAll(".ews-tab-panel").forEach(panel => {
+      panel.classList.toggle("active", panel.id === "panel-" + tab);
+    });
+    if(updateUrl){
+      const url = new URL(location.href);
+      url.searchParams.set("tab", tab);
+      history.replaceState(null, "", url);
+    }
+    // Muat data tab yang baru dibuka jika belum pernah dimuat (hemat panggilan API).
+    if(tab === "cuaca" && !ewsCuacaSudahDimuat){ ewsCuacaSudahDimuat = true; loadCuaca(); }
+    if(tab === "hotspot") renderHotspot();
+  }
+  document.getElementById("ews-tabbar").addEventListener("click", (e) => {
+    const btn = e.target.closest(".ews-tab");
+    if(btn) ewsPindahTab(btn.dataset.tab);
+  });
+
+  function renderStat(){
+    const data = ewsGetWilayahRisikoGabungan();
+    document.getElementById("m-tinggi").textContent = data.filter(w=>w.risiko==="Tinggi").length + " wilayah";
+    document.getElementById("m-sedang").textContent = data.filter(w=>w.risiko==="Sedang").length + " wilayah";
+    document.getElementById("m-rendah").textContent = data.filter(w=>w.risiko==="Rendah").length + " wilayah";
+  }
+
+  function ewsWaktuBarisMonitoring(w){
+    return w.diperbaruiPada || (typeof ewsWaktuSyncTerakhir === "function" && ewsWaktuSyncTerakhir()) || null;
+  }
+
+  // Sel tabel untuk kolom catatan lapangan (Jenis Lahan, Tujuan Monitoring, dst).
+  // Kosong (belum diisi petugas lewat modal Update) -> tampil strip "-" saja.
+  // Terisi -> dipotong (ellipsis) supaya tabel tetap rapi, teks lengkap muncul saat hover (title).
+  function selCatatan(teks, opsi){
+    const t = (teks === undefined || teks === null) ? "" : String(teks).trim();
+    if(!t) return `<td class="cell-catatan-kosong">-</td>`;
+    const aman = t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    const batas = (opsi && opsi.batas) || 26;
+    const pendek = aman.length > batas ? aman.slice(0, batas) + "…" : aman;
+    return `<td class="cell-catatan" title="${aman}">${pendek}</td>`;
+  }
+
+  function renderTable(){
+    const risikoFilter = document.getElementById("filter-risiko").value;
+    const cari = document.getElementById("filter-cari").value.toLowerCase();
+    const body = document.getElementById("monitoring-body");
+
+    const rows = ewsGetWilayahRisikoGabungan()
+      .filter(w => (!risikoFilter || w.risiko === risikoFilter))
+      .filter(w => w.kecamatan.toLowerCase().includes(cari))
+      .sort((a,b)=> b.hotspot - a.hotspot);
+
+    body.innerHTML = rows.map((w, i) => {
+      const waktuData = ewsWaktuBarisMonitoring(w);
+      const tanggalStr = waktuData ? new Date(waktuData).toLocaleDateString("id-ID", { day:"2-digit", month:"short", year:"numeric" }) : "-";
+      const waktuStr = waktuData ? new Date(waktuData).toLocaleTimeString("id-ID", { hour:"2-digit", minute:"2-digit" }) + " WIB" : "-";
+      return `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${tanggalStr}</td>
+        <td>${waktuStr}</td>
+        <td><strong>${w.kecamatan}</strong>${w.diperbaruiPada ? ' <span class="badge badge-neutral" style="font-size:10px;">diperbarui</span>' : ''}</td>
+        <td>${w.nama}</td>
+        <td>${w.lat.toFixed(4)}</td>
+        <td>${w.lng.toFixed(4)}</td>
+        <td>${w.suhu.toFixed(1)}</td>
+        <td>${w.kelembapan}</td>
+        <td>${w.hotspot}</td>
+        <td><span class="badge ${ewsBadgeClass(w.risiko)}">${w.risiko}</span></td>
+        ${selCatatan(w.jenisLahan, { batas:18 })}
+        ${selCatatan(w.tujuanMonitoring)}
+        ${selCatatan(w.catatanLokal)}
+        ${selCatatan(w.ancamanDampak)}
+        <td>${(w.jumlahTerdampakKK !== undefined && w.jumlahTerdampakKK !== null && w.jumlahTerdampakKK !== "") ? w.jumlahTerdampakKK + " KK" : "-"}</td>
+        ${selCatatan(w.tindakanPencegahan)}
+        ${selCatatan(w.tindakanPenanganan)}
+        ${selCatatan(w.hasilPeninjauan)}
+        <td>
+          <div class="aksi-cell">
+            <button class="btn btn-outline btn-sm" onclick="bukaModalUpdate('${w.kecamatan}')">✏️ Update</button>
+            <button type="button" class="btn-text-detail" onclick="bukaModalDetail('${w.kecamatan}')">Detail</button>
+            <a class="btn btn-outline btn-sm" href="peta.html?kecamatan=${encodeURIComponent(w.kecamatan)}&nama=${encodeURIComponent(w.nama)}">📍 Peta</a>
+          </div>
+        </td>
+      </tr>`;
+    }).join("") || `<tr><td colspan="20" style="text-align:center;color:var(--text-400);">Tidak ada data yang cocok.</td></tr>`;
+  }
+
+  function renderSemua(){ renderStat(); renderTable(); }
+
+  document.getElementById("filter-risiko").addEventListener("change", renderTable);
+  document.getElementById("filter-cari").addEventListener("input", renderTable);
+  renderSemua();
+
+  /* ==========================================================
+     TAB 2 — Data Cuaca (BMKG, prakiraan 3 hari kota/wilayah)
+     Sengaja terpisah dari sinkron per-kecamatan di atas: ini
+     menampilkan prakiraan RESMI 3 hari ke depan untuk wilayah
+     pantauan utama (EWS_CONFIG.bmkgAdm4), sedangkan sinkron di
+     atas mengisi suhu/kelembapan TERKINI tiap kecamatan.
+     ========================================================== */
+  let ewsCuacaSudahDimuat = false;
+  document.getElementById("cuaca-heading").textContent = "🌦️ Prakiraan Cuaca 3 Hari — " + EWS_CONFIG.wilayah;
+  document.getElementById("cuaca-wilayah-note").textContent = EWS_CONFIG.wilayah;
+
+  function renderCuacaFallback(){
+    document.getElementById("status-sumber-cuaca").textContent = "Menampilkan data contoh (API BMKG belum terhubung / kode wilayah belum dikonfigurasi)";
+    document.getElementById("cuaca-cards").innerHTML = CUACA_3HARI_FALLBACK.map(c => `
+      <div class="card" style="box-shadow:none;border:1px solid var(--border);">
+        <div style="font-weight:800;font-size:14px;">${c.hari}</div>
+        <div style="font-size:12px;color:var(--text-400);margin-bottom:10px;">${c.tanggal}</div>
+        <div style="font-size:26px;font-weight:800;">${c.suhuMin}–${c.suhuMax}°C</div>
+        <div style="font-size:12.5px;color:var(--text-600);margin:6px 0;">Siang: ${c.siang}</div>
+        <div style="font-size:12px;color:var(--text-400);">Kelembapan ${c.kelembapanMin}–${c.kelembapanMax}% · Angin ${c.angin}</div>
+      </div>`).join("");
+
+    document.getElementById("cuaca-body").innerHTML = CUACA_3HARI_FALLBACK.map(c => `
+      <tr>
+        <td><strong>${c.hari}</strong></td><td>${c.tanggal}</td>
+        <td>${c.pagi}</td><td>${c.siang}</td><td>${c.malam}</td>
+        <td>${c.suhuMin}–${c.suhuMax}</td><td>${c.kelembapanMin}–${c.kelembapanMax}</td><td>${c.angin}</td>
+      </tr>`).join("");
+  }
+
+  async function loadCuaca(){
+    document.getElementById("status-sumber-cuaca").textContent = "Memuat data dari BMKG…";
+    const hasil = await fetchBmkgCuaca();
+    if(!hasil || !hasil.harian || !hasil.harian.length){
+      renderCuacaFallback();
+      return;
+    }
+    document.getElementById("status-sumber-cuaca").textContent = "🟢 Data langsung dari BMKG (api.bmkg.go.id)";
+    const namaHari = ["Hari ini","Besok","Lusa"];
+    document.getElementById("cuaca-cards").innerHTML = hasil.harian.map((c,i) => `
+      <div class="card" style="box-shadow:none;border:1px solid var(--border);">
+        <div style="font-weight:800;font-size:14px;">${namaHari[i] || ("Hari " + (i+1))}</div>
+        <div style="font-size:12px;color:var(--text-400);margin-bottom:10px;">${c.tanggal}</div>
+        <div style="font-size:26px;font-weight:800;">${c.suhuMin}–${c.suhuMax}°C</div>
+        <div style="font-size:12.5px;color:var(--text-600);margin:6px 0;">${c.cuacaSiang}</div>
+        <div style="font-size:12px;color:var(--text-400);">Kelembapan ${c.kelembapanMin}–${c.kelembapanMax}% · Angin ${c.angin}</div>
+      </div>`).join("");
+
+    document.getElementById("cuaca-body").innerHTML = hasil.harian.map((c,i) => `
+      <tr>
+        <td><strong>${namaHari[i] || ("Hari " + (i+1))}</strong></td><td>${c.tanggal}</td>
+        <td>—</td><td>${c.cuacaSiang}</td><td>—</td>
+        <td>${c.suhuMin}–${c.suhuMax}</td><td>${c.kelembapanMin}–${c.kelembapanMax}</td><td>${c.angin}</td>
+      </tr>`).join("");
+  }
+  document.getElementById("btn-refresh-cuaca").addEventListener("click", loadCuaca);
+
+  /* ==========================================================
+     TAB 3 — Data Hotspot (arsip NASA FIRMS, disinkronkan bersama
+     tombol "Sinkronkan Sekarang" di bagian atas halaman)
+     ========================================================== */
+  document.getElementById("link-hotspot-bmkg").href = EWS_CONFIG.bmkgHotspotUrl;
+
+  // Pakai arsip hasil sinkron FIRMS kalau sudah ada isinya; kalau belum pernah
+  // sinkron sama sekali (mis. FIRMS_MAP_KEY belum diisi), tampilkan data contoh
+  // DATA_HOTSPOT supaya halaman tetap bisa didemokan.
+  function dataHotspotAktif(){
+    const arsip = ewsGetArsipHotspot();
+    return arsip || DATA_HOTSPOT;
+  }
+
+  function renderHotspot(){
+    const filter = document.getElementById("filter-confidence").value;
+    const semua = dataHotspotAktif();
+    const rows = semua.filter(h => !filter || h.confidence === filter);
+    document.getElementById("jumlah-hotspot").textContent = rows.length + " titik terdeteksi";
+    document.getElementById("tab-count-hotspot").textContent = semua.length;
+
+    document.getElementById("hotspot-body").innerHTML = rows.map(h => `
+      <tr>
+        <td><strong>${h.id}</strong></td>
+        <td>${h.tanggal}</td>
+        <td>${h.jam}</td>
+        <td>${h.kecamatan}</td>
+        <td>${h.lat.toFixed(4)}, ${h.lng.toFixed(4)}</td>
+        <td>${h.satelit}</td>
+        <td><span class="badge ${ewsBadgeClass(h.confidence)}">${h.confidence}</span></td>
+        <td>${h.persen}%</td>
+      </tr>`).join("") || `<tr><td colspan="8" style="text-align:center;color:var(--text-400);">Tidak ada titik panas yang cocok.</td></tr>`;
+  }
+  document.getElementById("filter-confidence").addEventListener("change", renderHotspot);
+
+  document.getElementById("btn-export-hotspot").addEventListener("click", () => {
+    const headers = ["ID","Tanggal","Jam","Kecamatan","Latitude","Longitude","Satelit","Confidence","Persen"];
+    const lines = dataHotspotAktif().map(h => [h.id,h.tanggal,h.jam,h.kecamatan,h.lat,h.lng,h.satelit,h.confidence,h.persen].join(","));
+    const csv = [headers.join(","), ...lines].join("\n");
+    const blob = new Blob([csv], { type:"text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "data-hotspot-pekanbaru-" + new Date().toISOString().slice(0,10) + ".csv";
+    a.click();
+  });
+  renderHotspot();
+
+  // ---------- Modal update data ----------
+  function bukaModalUpdate(kecamatan){
+    const w = ewsGetWilayahRisikoGabungan().find(x => x.kecamatan === kecamatan);
+    if(!w) return;
+    document.getElementById("modal-kecamatan").textContent = kecamatan;
+    document.getElementById("modal-suhu").value = w.suhu;
+    document.getElementById("modal-kelembapan").value = w.kelembapan;
+    document.getElementById("modal-hotspot").value = w.hotspot;
+    document.getElementById("modal-jenis-lahan").value = w.jenisLahan || "";
+    document.getElementById("modal-tujuan").value = w.tujuanMonitoring || "";
+    document.getElementById("modal-catatan").value = w.catatanLokal || "";
+    document.getElementById("modal-ancaman").value = w.ancamanDampak || "";
+    document.getElementById("modal-terdampak-kk").value = (w.jumlahTerdampakKK !== undefined && w.jumlahTerdampakKK !== null) ? w.jumlahTerdampakKK : "";
+    document.getElementById("modal-pencegahan").value = w.tindakanPencegahan || "";
+    document.getElementById("modal-penanganan").value = w.tindakanPenanganan || "";
+    document.getElementById("modal-hasil").value = w.hasilPeninjauan || "";
+    document.getElementById("form-update").dataset.kecamatan = kecamatan;
+    document.getElementById("modal-overlay").style.display = "flex";
+  }
+  function tutupModal(){ document.getElementById("modal-overlay").style.display = "none"; }
+
+  document.getElementById("btn-batal-modal").addEventListener("click", tutupModal);
+  document.getElementById("modal-overlay").addEventListener("click", (e) => { if(e.target.id === "modal-overlay") tutupModal(); });
+
+  document.getElementById("form-update").addEventListener("submit", function(e){
+    e.preventDefault();
+    const kecamatan = this.dataset.kecamatan;
+    const suhu = parseFloat(document.getElementById("modal-suhu").value);
+    const kelembapan = parseFloat(document.getElementById("modal-kelembapan").value);
+    const hotspot = parseInt(document.getElementById("modal-hotspot").value, 10);
+    const terdampakKkVal = document.getElementById("modal-terdampak-kk").value;
+
+    const catatan = {
+      jenisLahan: document.getElementById("modal-jenis-lahan").value,
+      tujuanMonitoring: document.getElementById("modal-tujuan").value,
+      catatanLokal: document.getElementById("modal-catatan").value,
+      ancamanDampak: document.getElementById("modal-ancaman").value,
+      jumlahTerdampakKK: terdampakKkVal === "" ? 0 : parseInt(terdampakKkVal, 10),
+      tindakanPencegahan: document.getElementById("modal-pencegahan").value,
+      tindakanPenanganan: document.getElementById("modal-penanganan").value,
+      hasilPeninjauan: document.getElementById("modal-hasil").value
+    };
+
+    ewsSimpanUpdateMonitoring(kecamatan, suhu, kelembapan, hotspot, catatan);
+    tutupModal();
+    renderSemua();
+
+    const risikoBaru = ewsHitungRisiko(suhu, kelembapan, hotspot);
+    alert(`Data ${kecamatan} berhasil diperbarui.\nTingkat risiko baru: ${risikoBaru}\n\nPerubahan ini otomatis tercermin di halaman Peringatan, Peta, dan Dashboard.`);
+  });
+
+  // ---------- Modal detail (hanya lihat) ----------
+  function baris(label, value){
+    const tampil = (value !== undefined && value !== null && String(value).trim() !== "") ? value : "-";
+    return `<div class="detail-item"><label>${label}</label><p>${tampil}</p></div>`;
+  }
+
+  function bukaModalDetail(kecamatan){
+    const w = ewsGetWilayahRisikoGabungan().find(x => x.kecamatan === kecamatan);
+    if(!w) return;
+    document.getElementById("detail-kecamatan").textContent = kecamatan;
+    document.getElementById("detail-body").innerHTML = `
+      <div class="detail-grid">
+        ${baris("Tingkat Risiko", w.risiko)}
+        ${baris("Jenis Lahan", w.jenisLahan)}
+        ${baris("Jumlah Titik Panas", w.hotspot)}
+        ${baris("Jumlah Terdampak (KK)", w.jumlahTerdampakKK)}
+        <div class="detail-item detail-full">${baris("Tujuan Monitoring", w.tujuanMonitoring)}</div>
+        <div class="detail-item detail-full">${baris("Catatan Lokasi", w.catatanLokal)}</div>
+        <div class="detail-item detail-full">${baris("Ancaman dan Dampak", w.ancamanDampak)}</div>
+        <div class="detail-item detail-full">${baris("Tindakan Pencegahan", w.tindakanPencegahan)}</div>
+        <div class="detail-item detail-full">${baris("Tindakan Penanganan", w.tindakanPenanganan)}</div>
+        <div class="detail-item detail-full">${baris("Hasil Peninjauan", w.hasilPeninjauan)}</div>
+      </div>`;
+    document.getElementById("modal-detail-overlay").style.display = "flex";
+  }
+  function tutupModalDetail(){ document.getElementById("modal-detail-overlay").style.display = "none"; }
+
+  document.getElementById("btn-tutup-detail").addEventListener("click", tutupModalDetail);
+  document.getElementById("btn-tutup-detail-2").addEventListener("click", tutupModalDetail);
+  document.getElementById("modal-detail-overlay").addEventListener("click", (e) => { if(e.target.id === "modal-detail-overlay") tutupModalDetail(); });
+
+  // Download data monitoring (mengikuti filter yang sedang aktif) sebagai CSV
+  document.getElementById("btn-export-monitoring").addEventListener("click", () => {
+    const risikoFilter = document.getElementById("filter-risiko").value;
+    const cari = document.getElementById("filter-cari").value.toLowerCase();
+    const rows = ewsGetWilayahRisikoGabungan()
+      .filter(w => (!risikoFilter || w.risiko === risikoFilter))
+      .filter(w => w.kecamatan.toLowerCase().includes(cari));
+
+    const headers = ["No.","Tanggal","Waktu","Kecamatan","Kelurahan","Latitude","Longitude","Suhu (C)","Kelembapan (%)","Titik Panas","Tingkat Risiko",
+      "Jenis Lahan","Tujuan Monitoring","Catatan Lokasi","Ancaman dan Dampak","Jumlah Terdampak (KK)","Tindakan Pencegahan","Tindakan Penanganan","Hasil Peninjauan"];
+    const csvAman = (v) => `"${String(v === undefined || v === null ? "-" : v).replace(/"/g,'""')}"`;
+    const lines = rows.map((w, i) => {
+      const waktuData = ewsWaktuBarisMonitoring(w);
+      const tanggalStr = waktuData ? new Date(waktuData).toLocaleDateString("id-ID", { day:"2-digit", month:"short", year:"numeric" }) : "-";
+      const waktuStr = waktuData ? new Date(waktuData).toLocaleTimeString("id-ID", { hour:"2-digit", minute:"2-digit" }) + " WIB" : "-";
+      return [i + 1, tanggalStr, waktuStr, w.kecamatan, w.nama, w.lat, w.lng, w.suhu, w.kelembapan, w.hotspot, w.risiko,
+        csvAman(w.jenisLahan), csvAman(w.tujuanMonitoring), csvAman(w.catatanLokal), csvAman(w.ancamanDampak),
+        (w.jumlahTerdampakKK !== undefined && w.jumlahTerdampakKK !== null ? w.jumlahTerdampakKK : 0),
+        csvAman(w.tindakanPencegahan), csvAman(w.tindakanPenanganan), csvAman(w.hasilPeninjauan)].join(",");
+    });
+    const csv = [headers.join(","), ...lines].join("\n");
+    const blob = new Blob([csv], { type:"text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "monitoring-karhutla-" + new Date().toISOString().slice(0,10) + ".csv";
+    a.click();
+  });
+
+  // ---------- Sinkronisasi real-time (BMKG + FIRMS) — memperbarui KETIGA tab sekaligus ----------
+  const pilihRentang = document.getElementById("pilih-rentang-hari");
+  pilihRentang.value = String(ewsGetRentangHariHotspot()); // preferensi tersimpan (dipakai bersama sinkron FIRMS)
+
+  function tampilkanStatusSync(){
+    const waktu = ewsWaktuSyncTerakhir();
+    const el = document.getElementById("sync-status");
+    if(!waktu){ el.textContent = "Belum pernah disinkronkan"; return; }
+    const tgl = new Date(waktu).toLocaleString("id-ID", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
+    el.textContent = "Terakhir disinkronkan: " + tgl + " WIB";
+  }
+  tampilkanStatusSync();
+
+  async function jalankanSinkron(otomatis){
+    const btn = document.getElementById("btn-sinkron");
+    const progress = document.getElementById("sync-progress");
+    const hari = parseInt(pilihRentang.value, 10);
+    btn.disabled = true;
+    btn.textContent = "⏳ Menyinkronkan...";
+    progress.style.display = "block";
+    progress.textContent = "Menghubungi BMKG...";
+
+    try{
+      const hasil = await ewsSinkronMonitoringRealtime((kec) => {
+        progress.textContent = "Mengambil data cuaca: " + kec + "...";
+      }, hari);
+
+      // Perbarui ketiga tab sekaligus supaya semuanya selalu selaras
+      // dengan hasil sinkronisasi yang baru saja selesai.
+      renderSemua();
+      renderHotspot();
+      if(ewsCuacaSudahDimuat) loadCuaca();
+      tampilkanStatusSync();
+
+      // Kirim notifikasi Telegram HANYA untuk kecamatan yang status
+      // risikonya baru saja NAIK ke Sedang/Tinggi (lihat notifikasi.js).
+      // Tidak menghentikan alur kalau gagal (mis. token belum diisi),
+      // supaya sinkronisasi utama tetap dianggap sukses.
+      let kecamatanDinotifikasi = [];
+      try{
+        kecamatanDinotifikasi = await ewsCekDanKirimNotifikasiEskalasi();
+      }catch(e){
+        console.warn("[Notifikasi] Gagal cek/kirim eskalasi:", e);
+      }
+
+      progress.textContent = `Selesai — ${hasil.jumlahTersinkron}/${hasil.totalWilayah} kecamatan berhasil ditarik dari BMKG.` +
+        (hasil.firmsAktif ? ` Arsip titik panas diperbarui dari NASA FIRMS (${hari} hari terakhir).` : " Titik panas masih memakai data tersimpan (API key FIRMS belum dikonfigurasi).") +
+        (kecamatanDinotifikasi.length ? ` Notifikasi Telegram terkirim untuk: ${kecamatanDinotifikasi.join(", ")}.` : "");
+      if(!otomatis){
+        alert(`Sinkronisasi selesai.\n${hasil.jumlahTersinkron} dari ${hasil.totalWilayah} kecamatan berhasil diperbarui dari BMKG.` +
+          (hasil.firmsAktif ? `\nArsip titik panas diperbarui dari NASA FIRMS (${hari} hari terakhir).` : "\nTitik panas belum tersinkron real-time (isi FIRMS_MAP_KEY di assets/js/api.js untuk mengaktifkan)."));
+      }
+    }catch(e){
+      console.error(e);
+      progress.textContent = "Gagal menyinkronkan data. Periksa koneksi internet.";
+      if(!otomatis) alert("Sinkronisasi gagal. Periksa koneksi internet Anda, lalu coba lagi.");
+    }finally{
+      btn.disabled = false;
+      btn.textContent = "🔄 Sinkronkan Sekarang";
+    }
+  }
+
+  document.getElementById("btn-sinkron").addEventListener("click", () => jalankanSinkron(false));
+  // Ganti rentang hari langsung memicu sinkron ulang, supaya tabel Hotspot &
+  // preferensi tersimpan langsung ikut berubah tanpa perlu klik tombol terpisah.
+  pilihRentang.addEventListener("change", () => jalankanSinkron(false));
+
+  // Auto-sync saat halaman dibuka, jika belum pernah disinkron ATAU sudah lewat 12 jam
+  (function autoSyncJikaPerlu(){
+    const waktu = ewsWaktuSyncTerakhir();
+    const perluSync = !waktu || (Date.now() - new Date(waktu).getTime()) > 12 * 60 * 60 * 1000;
+    if(perluSync) jalankanSinkron(true);
+  })();
+
+  // Buka tab sesuai parameter URL (?tab=wilayah|cuaca|hotspot), jika ada —
+  // dipakai untuk tautan langsung dari halaman lain (Peringatan, Laporan, dsb).
+  ewsPindahTab(ewsTabAktifDariUrl(), { updateUrl:false });
+</script>
+</body>
+</html>
