@@ -87,8 +87,8 @@ const URUTAN_RISIKO = { Rendah: 0, Sedang: 1, Tinggi: 2 };
 // "DUPLIKASI YANG PERLU DIJAGA" di atas file ini.
 function hitungRisiko(suhu, kelembapan, hotspot) {
   let skor = 0;
-  if (suhu >= 30) skor += 2;
-  else if (suhu >= 38) skor += 1;
+  if (suhu >= 35) skor += 2;
+  else if (suhu >= 33) skor += 1;
   if (kelembapan <= 45) skor += 2;
   else if (kelembapan <= 55) skor += 1;
   if (hotspot >= 4) skor += 3;
