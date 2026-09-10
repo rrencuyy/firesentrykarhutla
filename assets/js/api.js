@@ -117,6 +117,17 @@ async function ewsAmbilTrenCuacaBmkg(adm4Code, jumlahTitik){
    Fungsi di bawah ini disiapkan sebagai titik integrasi; jika
    MAP_KEY belum diisi, sistem memakai DATA_HOTSPOT (contoh).
    ========================================================= */
+/* CATATAN: key ini SENGAJA masih ditulis langsung di sini (beda dengan
+   TELEGRAM_BOT_TOKEN yang sudah dipindah ke GitHub Secrets — lihat
+   assets/js/notifikasi.js). Situs ini statis tanpa backend, sedangkan
+   fitur peta/tabel hotspot di dashboard butuh data live saat halaman
+   dibuka di browser siapa pun — bukan cuma saat GitHub Actions jalan.
+   Risikonya jauh lebih rendah dari token bot Telegram: MAP_KEY NASA
+   FIRMS cuma bisa dipakai untuk QUERY DATA HOTSPOT (baca data publik),
+   TIDAK bisa dipakai kirim pesan/aksi apa pun atas nama kamu. Kalau
+   suatu saat mau ditutup total, key ini perlu di-generate ulang lewat
+   firms.modaps.eosdis.nasa.gov/api/area/ dan pengambilan datanya
+   dipindah ke backend/proxy (di luar cakupan situs statis ini). */
 const FIRMS_MAP_KEY = "3486f6f3e9c24833f254f4a7f2bf2976"; // API key NASA FIRMS (magang BPBD Pekanbaru)
 
 /* Rentang hari pencarian hotspot FIRMS (day_range pada endpoint area/csv).

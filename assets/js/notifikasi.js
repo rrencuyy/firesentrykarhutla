@@ -21,19 +21,22 @@
    4. Isi TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID di bawah ini.
 
    CATATAN KEAMANAN (penting untuk laporan/sidang):
-   Karena ini situs statis tanpa server, TOKEN akan terlihat oleh
-   siapa pun yang membuka "View Page Source" di browser — sama
-   seperti FIRMS_MAP_KEY di api.js. Ini cukup aman untuk demo/skripsi
-   selama bot HANYA dipakai kirim pesan ke 1 grup internal (bukan
-   bot publik yang menyimpan data sensitif). Kalau merasa disalah-
-   gunakan, token bisa langsung dicabut & diganti lewat /revoke di
-   BotFather. Untuk versi produksi nyata (setelah tersambung ke
-   server BPBD asli), sebaiknya pengiriman dipindah ke backend agar
-   token tidak pernah sampai ke browser pengguna.
+   Notifikasi Telegram SEKARANG dikirim dari sisi SERVER lewat
+   GitHub Actions (lihat scripts/cek-status-karhutla.mjs +
+   .github/workflows/cek-status-karhutla.yml), yang membaca token
+   dari GitHub Secrets — bukan dari file ini. Itu sebabnya kolom di
+   bawah ini SENGAJA dikosongkan: token TIDAK BOLEH ditulis di sini
+   lagi, karena file JS ini dikirim ke browser setiap pengunjung dan
+   siapa pun bisa membacanya lewat "View Page Source"/DevTools.
+   Token lama yang sempat ditulis di sini sudah harus dianggap bocor
+   dan WAJIB di-revoke & diganti lewat @BotFather -> /revoke di
+   Telegram, meskipun sudah dihapus dari kode ini (riwayat git masih
+   menyimpannya). Fungsi ewsKirimTelegram() di bawah tetap ada dan
+   akan otomatis dilewati (skip) selama TELEGRAM_BOT_TOKEN kosong.
    ========================================================= */
 
-const TELEGRAM_BOT_TOKEN = "8948149820:AAGCZtJuLxLvfe3pxAqieQIakAgkeRR_qyU";
-const TELEGRAM_CHAT_ID   = "-4999388569";
+const TELEGRAM_BOT_TOKEN = ""; // sengaja kosong — pengiriman ditangani GitHub Actions, lihat catatan di atas
+const TELEGRAM_CHAT_ID   = ""; // sengaja kosong — pengiriman ditangani GitHub Actions, lihat catatan di atas
 
 const EWS_STORAGE_STATUS_NOTIFIKASI = "ews_karhutla_status_notifikasi_terakhir";
 const EWS_URUTAN_RISIKO = { "Rendah": 0, "Sedang": 1, "Tinggi": 2 };
