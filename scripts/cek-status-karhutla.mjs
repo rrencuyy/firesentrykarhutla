@@ -196,6 +196,15 @@ function susunPesan(kecamatan, risikoBaru) {
   );
 }
 
+/**
+ * Alert KHUSUS untuk masalah SISTEM (bukan eskalasi risiko karhutla biasa)
+ * — dipakai saat BMKG gagal total atau script error, supaya petugas/dev
+ * tahu sistemnya sedang "buta", bukan diam-diam berhenti kerja.
+ */
+async function kirimAlertSistem(pesan) {
+  await kirimTelegram(`⚠️ <b>PERINGATAN SISTEM FIRESENTRY</b>\n${pesan}\n\nWaktu: ${new Date().toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB`);
+}
+
 async function bacaStatusLama() {
   try {
     return JSON.parse(await readFile(FILE_STATUS, "utf8"));
@@ -220,6 +229,8 @@ async function main() {
   });
   const hotspotPerKecamatan = kelompokkanHotspot(titikFirms);
 
+  const kecamatanGagal = []; // nama kecamatan yang BMKG-nya gagal diambil kali ini
+
   for (const [kecamatan, adm4] of Object.entries(KECAMATAN_ADM4)) {
     let cuaca = null;
     try {
@@ -227,7 +238,10 @@ async function main() {
     } catch (e) {
       console.warn(`[BMKG] Gagal ambil cuaca untuk ${kecamatan}:`, e.message);
     }
-    if (!cuaca) continue; // BMKG gagal untuk kecamatan ini, lewati (jangan tebak status)
+    if (!cuaca) {
+      kecamatanGagal.push(kecamatan);
+      continue; // BMKG gagal untuk kecamatan ini, lewati (jangan tebak status)
+    }
 
     const hotspot = hotspotPerKecamatan[kecamatan] || 0;
     const risikoBaru = hitungRisiko(cuaca.suhu, cuaca.kelembapan, hotspot);
@@ -247,6 +261,26 @@ async function main() {
 
   await simpanStatusBaru(statusBaru);
 
+  const totalKecamatan = Object.keys(KECAMATAN_ADM4).length;
+  if (kecamatanGagal.length === totalKecamatan) {
+    // SEMUA kecamatan gagal — kemungkinan besar BMKG down atau endpoint berubah.
+    // Ini paling kritis: sistem jadi "buta" total tanpa ada yang tahu.
+    console.error("[ALERT] BMKG gagal untuk SEMUA kecamatan — sistem tidak bisa menilai risiko saat ini.");
+    await kirimAlertSistem(
+      `Gagal mengambil data cuaca BMKG untuk <b>SEMUA ${totalKecamatan} kecamatan</b>.\n` +
+      `Sistem TIDAK BISA menilai status risiko saat ini — kemungkinan BMKG API sedang down atau berubah.\n` +
+      `Cek log GitHub Actions untuk detail error.`
+    );
+  } else if (kecamatanGagal.length > 0) {
+    // Sebagian gagal — beri tahu supaya tidak dikira "aman", padahal cuma tidak ter-cek.
+    console.warn(`[ALERT] BMKG gagal untuk ${kecamatanGagal.length} dari ${totalKecamatan} kecamatan:`, kecamatanGagal.join(", "));
+    await kirimAlertSistem(
+      `Gagal ambil data cuaca untuk ${kecamatanGagal.length} dari ${totalKecamatan} kecamatan:\n` +
+      `<b>${kecamatanGagal.join(", ")}</b>\n` +
+      `Kecamatan ini TIDAK ter-update statusnya kali ini (bukan berarti aman, datanya cuma tidak masuk).`
+    );
+  }
+
   if (dinotifikasi.length) {
     console.log("Notifikasi terkirim untuk:", dinotifikasi.join(", "));
   } else {
@@ -254,7 +288,12 @@ async function main() {
   }
 }
 
-main().catch((e) => {
+main().catch(async (e) => {
   console.error("Pengecekan gagal total:", e);
+  // Kirim juga ke Telegram, jangan cuma diam di log GitHub Actions yang jarang dicek.
+  await kirimAlertSistem(
+    `Script pengecekan status karhutla GAGAL TOTAL dengan error:\n<code>${String(e.message || e).slice(0, 300)}</code>\n` +
+    `Cek log GitHub Actions untuk detail lengkap.`
+  ).catch(() => {}); // kalau kirim alert-nya sendiri juga gagal, jangan sampai bikin proses macet
   process.exit(1);
 });
